@@ -55,6 +55,9 @@
     append: true
   become: true
 
+- name: Reset connection so new docker group membership takes effect
+  meta: reset_connection
+
 - name: Install Python Docker SDK
   apt:
     name: python3-docker
