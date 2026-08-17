@@ -1,0 +1,38 @@
+---
+- name: Check if Docker CLI is available
+  win_command: docker --version
+  register: docker_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Install Docker Desktop via Chocolatey
+  chocolatey.chocolatey.win_chocolatey:
+    name: docker-desktop
+    state: present
+  when: docker_check.rc != 0
+
+- name: Ensure Python is installed (needed for docker_* Ansible modules)
+  chocolatey.chocolatey.win_chocolatey:
+    name: python3
+    state: present
+
+- name: Check if Docker Desktop process is running
+  win_shell: Get-Process "Docker Desktop" -ErrorAction SilentlyContinue
+  register: docker_process
+  changed_when: false
+
+- name: Launch Docker Desktop
+  win_shell: Start-Process "C:\Program Files\Docker\Docker\Docker Desktop.exe"
+  when: docker_process.stdout == ""
+
+- name: Wait for Docker daemon to be ready
+  win_command: docker info
+  register: docker_info
+  until: docker_info.rc == 0
+  retries: 30
+  delay: 10
+  changed_when: false
+
+- name: Ensure Docker Python SDK is installed
+  win_command: python -m pip install docker
+  changed_when: true

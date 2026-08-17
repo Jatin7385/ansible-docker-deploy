@@ -1,0 +1,37 @@
+---
+- name: Check if Docker CLI is available
+  command: docker --version
+  register: docker_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Install Docker Desktop via Homebrew Cask
+  community.general.homebrew_cask:
+    name: docker
+    state: present
+  when: docker_check.rc != 0
+
+- name: Check if Docker Desktop is already running
+  command: pgrep -x Docker
+  register: docker_running
+  ignore_errors: true
+  changed_when: false
+
+- name: Launch Docker Desktop
+  command: open -a Docker
+  when: docker_running.rc != 0
+
+- name: Wait for Docker daemon to be ready
+  command: docker info
+  register: docker_info
+  until: docker_info.rc == 0
+  retries: 30
+  delay: 5
+  changed_when: false
+
+- name: Ensure Docker Python SDK is installed
+  pip:
+    name: docker
+    state: present
+    executable: pip3
+    extra_args: --break-system-packages

@@ -1,0 +1,44 @@
+---
+- name: Deploy any Docker image across macOS, Ubuntu, and Windows
+  hosts: all
+  gather_facts: true
+
+  vars:
+    container_name: "app"
+    docker_ports: []      # e.g. ["8080:80"]
+    docker_env: {}         # e.g. { FOO: "bar" }
+    docker_volumes: []     # e.g. ["/local/path:/container/path"]
+
+  tasks:
+
+    - name: Fail early if no image was specified
+      fail:
+        msg: "You must pass -e docker_image=<image:tag>"
+      when: docker_image is not defined
+
+    - name: Run macOS-specific Docker setup
+      include_tasks: tasks/macos.yml
+      when: ansible_facts['os_family'] == "Darwin"
+
+    - name: Run Ubuntu/Debian-specific Docker setup
+      include_tasks: tasks/ubuntu.yml
+      when: ansible_facts['os_family'] == "Debian"
+
+    - name: Run Windows-specific Docker setup
+      include_tasks: tasks/windows.yml
+      when: ansible_facts['os_family'] == "Windows"
+
+    - name: Pull the specified Docker image
+      community.docker.docker_image:
+        name: "{{ docker_image }}"
+        source: pull
+
+    - name: Run the container
+      community.docker.docker_container:
+        name: "{{ container_name }}"
+        image: "{{ docker_image }}"
+        state: started
+        restart_policy: unless-stopped
+        ports: "{{ docker_ports }}"
+        env: "{{ docker_env }}"
+        volumes: "{{ docker_volumes }}"
