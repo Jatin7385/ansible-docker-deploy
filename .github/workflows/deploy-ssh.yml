@@ -1,0 +1,66 @@
+name: Deploy Docker Image via Ansible (SSH to remote server)
+
+# Manually triggered from the GitHub Actions tab (or `gh workflow run`),
+# with the same parameters we've been passing via -e on the command line.
+on:
+  workflow_dispatch:
+    inputs:
+      docker_image:
+        description: "Docker image to deploy, e.g. nginx:latest"
+        required: true
+      container_name:
+        description: "Name for the running container"
+        required: true
+        default: "app"
+      docker_ports:
+        description: 'JSON list of "host:container" port mappings, e.g. ["8080:80"]'
+        required: false
+        default: "[]"
+      docker_env:
+        description: "JSON object of environment variables, e.g. {\"FOO\": \"bar\"}"
+        required: false
+        default: "{}"
+      docker_volumes:
+        description: 'JSON list of "host:container" volume mounts'
+        required: false
+        default: "[]"
+
+jobs:
+  deploy:
+    # The runner itself is Ubuntu, and acts as the Ansible control node.
+    # The actual deploy target is a remote server, reached over SSH below.
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Ansible and required collections
+        run: |
+          pip install --upgrade ansible
+          ansible-galaxy collection install -r requirements.yml
+        working-directory: .
+
+      - name: Write deploy SSH key from secret
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Generate inventory for this run
+        run: |
+          cat > inventory-ci.ini <<EOF
+          [ubuntu]
+          target ansible_host=${{ secrets.DEPLOY_HOST }} ansible_user=${{ secrets.DEPLOY_USER }} ansible_ssh_private_key_file=~/.ssh/deploy_key
+          EOF
+        # Generated fresh every run from secrets — never committed, unlike
+        # the placeholder values in inventory-ssh.ini used for local testing.
+
+      - name: Run playbook against remote server
+        run: |
+          ansible-playbook -i inventory-ci.ini playbook.yml -l ubuntu \
+            -e docker_image="${{ inputs.docker_image }}" \
+            -e container_name="${{ inputs.container_name }}" \
+            -e docker_ports='${{ inputs.docker_ports }}' \
+            -e docker_env='${{ inputs.docker_env }}' \
+            -e docker_volumes='${{ inputs.docker_volumes }}'

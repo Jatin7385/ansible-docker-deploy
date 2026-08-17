@@ -1,0 +1,60 @@
+name: Deploy Docker Image Locally (on runner, no SSH)
+
+# Runs the playbook directly against the GitHub Actions runner itself.
+# The runner IS Ubuntu, so this exercises tasks/ubuntu.yml the same way
+# scripts/setup-linux.sh + a local run would on a real Ubuntu machine —
+# connection=local, no SSH, no remote target involved.
+on:
+  workflow_dispatch:
+    inputs:
+      docker_image:
+        description: "Docker image to deploy, e.g. nginx:latest"
+        required: true
+      container_name:
+        description: "Name for the running container"
+        required: true
+        default: "app"
+      docker_ports:
+        description: 'JSON list of "host:container" port mappings, e.g. ["8080:80"]'
+        required: false
+        default: "[]"
+      docker_env:
+        description: "JSON object of environment variables, e.g. {\"FOO\": \"bar\"}"
+        required: false
+        default: "{}"
+      docker_volumes:
+        description: 'JSON list of "host:container" volume mounts'
+        required: false
+        default: "[]"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install Ansible and required collections
+        run: |
+          pip install --upgrade ansible
+          ansible-galaxy collection install -r requirements.yml
+
+      - name: Generate local inventory for this run
+        run: |
+          cat > inventory-local-ci.ini <<EOF
+          [ubuntu]
+          localhost ansible_connection=local
+          EOF
+
+      - name: Run playbook locally on the runner
+        run: |
+          ansible-playbook -i inventory-local-ci.ini playbook.yml -l ubuntu \
+            -e docker_image="${{ inputs.docker_image }}" \
+            -e container_name="${{ inputs.container_name }}" \
+            -e docker_ports='${{ inputs.docker_ports }}' \
+            -e docker_env='${{ inputs.docker_env }}' \
+            -e docker_volumes='${{ inputs.docker_volumes }}'
+
+      - name: Verify container is running
+        run: docker ps --filter "name=${{ inputs.container_name }}"
