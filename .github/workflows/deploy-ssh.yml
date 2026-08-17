@@ -56,11 +56,17 @@ jobs:
         # Generated fresh every run from secrets — never committed, unlike
         # the placeholder values in inventory-ssh.ini used for local testing.
 
-      - name: Run playbook against remote server
+      - name: Write extra-vars file
         run: |
-          ansible-playbook -i inventory-ci.ini playbook.yml -l ubuntu \
-            -e docker_image="${{ inputs.docker_image }}" \
-            -e container_name="${{ inputs.container_name }}" \
-            -e docker_ports='${{ inputs.docker_ports }}' \
-            -e docker_env='${{ inputs.docker_env }}' \
-            -e docker_volumes='${{ inputs.docker_volumes }}'
+          cat > extra-vars.json <<EOF
+          {
+            "docker_image": "${{ inputs.docker_image }}",
+            "container_name": "${{ inputs.container_name }}",
+            "docker_ports": ${{ inputs.docker_ports }},
+            "docker_env": ${{ inputs.docker_env }},
+            "docker_volumes": ${{ inputs.docker_volumes }}
+          }
+          EOF
+
+      - name: Run playbook against remote server
+        run: ansible-playbook -i inventory-ci.ini playbook.yml -l ubuntu -e @extra-vars.json

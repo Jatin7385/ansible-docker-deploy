@@ -47,14 +47,40 @@ jobs:
           localhost ansible_connection=local
           EOF
 
-      - name: Run playbook locally on the runner
+      - name: Write extra-vars file
         run: |
-          ansible-playbook -i inventory-local-ci.ini playbook.yml -l ubuntu \
-            -e docker_image="${{ inputs.docker_image }}" \
-            -e container_name="${{ inputs.container_name }}" \
-            -e docker_ports='${{ inputs.docker_ports }}' \
-            -e docker_env='${{ inputs.docker_env }}' \
-            -e docker_volumes='${{ inputs.docker_volumes }}'
+          cat > extra-vars.json <<EOF
+          {
+            "docker_image": "${{ inputs.docker_image }}",
+            "container_name": "${{ inputs.container_name }}",
+            "docker_ports": ${{ inputs.docker_ports }},
+            "docker_env": ${{ inputs.docker_env }},
+            "docker_volumes": ${{ inputs.docker_volumes }}
+          }
+          EOF
+          cat extra-vars.json
+
+      - name: Run playbook locally on the runner
+        run: ansible-playbook -i inventory-local-ci.ini playbook.yml -l ubuntu -e @extra-vars.json
 
       - name: Verify container is running
         run: docker ps --filter "name=${{ inputs.container_name }}"
+
+      - name: Check container health over HTTP (if ports were mapped)
+        run: |
+          HOST_PORT=$(echo '${{ inputs.docker_ports }}' | jq -r '.[0] // empty' | cut -d: -f1)
+          if [ -n "$HOST_PORT" ]; then
+            echo "Waiting a few seconds for the app to finish starting..."
+            sleep 5
+            echo "Requesting http://localhost:$HOST_PORT ..."
+            curl -sS -o /dev/null -w "HTTP status: %{http_code}\n" "http://localhost:$HOST_PORT" || \
+              echo "Request failed outright (connection refused/timeout) - check the app's logs above."
+          else
+            echo "No ports were mapped for this run; skipping HTTP check."
+          fi
+
+      - name: Clean up container (tidy logs; the runner VM is destroyed after this job regardless)
+        if: always()
+        run: |
+          docker stop "${{ inputs.container_name }}" 2>/dev/null || true
+          docker rm "${{ inputs.container_name }}" 2>/dev/null || true
