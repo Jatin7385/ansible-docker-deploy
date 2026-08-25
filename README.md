@@ -54,6 +54,7 @@ Run the setup script matching the machine you're running Ansible *from*
 
 # Ubuntu/Linux
 ./scripts/setup-linux.sh
+source ./venv/bin/activate
 ```
 
 ```powershell
@@ -102,6 +103,11 @@ ansible-playbook playbook.yml -l ubuntu \
   -e docker_image=nginx:latest \
   -e container_name=my-nginx \
   -e '{"docker_ports": ["8080:80"]}'
+```
+
+Ubuntu, local WSL: YAMCS 
+```bash
+ansible-playbook -i inventory.ini playbook.yml -l ubuntu -K   -e docker_image=yamcs/example-simulation:latest   -e container_name=yamcs-example-sim   -e '{"docker_ports": ["8090:8090"]}'
 ```
 
 Windows, over WinRM:
